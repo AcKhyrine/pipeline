@@ -17,18 +17,18 @@ jobs:
     - name: Set variables
       run: |
         echo "SOURCE_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
-        # extract target branch from PR base
         echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
-
-    - name: Parse proxies from PR description
-      id: parse
-      run: |
         echo "PR_DESC<<EOF" >> $GITHUB_ENV
         echo "${{ github.event.pull_request.body }}" >> $GITHUB_ENV
         echo "EOF" >> $GITHUB_ENV
 
-        # parse lines like "promote: proxy2" or "promote:\n- proxy2"
-        PROXIES=$(echo "${{ github.event.pull_request.body }}" | grep -Eo "proxy[0-9]+" || echo "")
+    - name: Parse proxies from PR description
+      id: parse
+      run: |
+        # Extract lines after "promote:" and split by spaces, hyphens allowed
+        PROXIES=$(echo "${{ github.event.pull_request.body }}" | \
+          sed -n '/promote:/,$p' | \
+          grep -oE '[a-zA-Z0-9_-]+')
         echo "PROXIES=$PROXIES"
         echo "PROXIES=$PROXIES" >> $GITHUB_ENV
 
@@ -59,8 +59,13 @@ jobs:
 
     - name: Commit promotion changes
       run: |
-        git add src/main/apiproxies/*
-        git commit -m "Promote proxies: $PROXIES from $SOURCE_BRANCH → $TARGET_BRANCH" || echo "No changes to commit"
+        # Only commit if proxies were copied
+        if ls src/main/apiproxies/* 1> /dev/null 2>&1; then
+          git add src/main/apiproxies/*
+          git commit -m "Promote proxies: $PROXIES from $SOURCE_BRANCH → $TARGET_BRANCH" || echo "No changes to commit"
+        else
+          echo "No proxies copied. Skipping commit."
+        fi
 
     - name: Push promotion branch
       uses: ad-m/github-push-action@v0.6.0
