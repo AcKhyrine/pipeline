@@ -83,19 +83,76 @@
 #             echo "No changes to promote.txt, skipping push."
 #           fi
 
-name: Generate and Save Promote File After Merge
+name: Promote Proxies Workflow
 
+# Workflow triggers:
+# 1️⃣ Validate proxies on PR creation/edit
+# 2️⃣ Create/update promote.txt after PR merge
 on:
   pull_request:
-    types: [closed]
+    types: [opened, synchronize, reopened, edited, closed]
 
 jobs:
-  create_promote_file:
-    if: github.event.pull_request.merged == true
+  validate_proxies:
+    if: github.event.pull_request.merged != true  # run only on open PRs
     runs-on: ubuntu-latest
-
+    name: Validate Proxies
     steps:
       - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate proxies exist
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          BASE_DIR="scr/main/apiproxies"
+          echo "PR Title: $PR_TITLE"
+
+          # Extract proxies from PR title
+          RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
+          if [ -z "$RAW" ]; then
+            echo "❌ No proxies found in PR title."
+            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
+            exit 1
+          fi
+
+          # Split comma-separated proxies
+          PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
+          MISSING=0
+
+          # Case-insensitive validation
+          for proxy in $PROXIES; do
+            FOUND=0
+            for dir in "$BASE_DIR"/*; do
+              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
+              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
+                FOUND=1
+                break
+              fi
+            done
+            if [ "$FOUND" -eq 0 ]; then
+              echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
+              MISSING=1
+            else
+              echo "✅ Found proxy: $proxy"
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "❌ One or more proxies do not exist. PR cannot be merged."
+            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
+            exit 1
+          fi
+
+          echo "✅ All proxies exist."
+
+  create_promote_file:
+    if: github.event.pull_request.merged == true  # run only after PR merge
+    runs-on: ubuntu-latest
+    name: Create/Update promote.txt After Merge
+    steps:
+      - name: Checkout target branch
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.ref }}
@@ -106,12 +163,45 @@ jobs:
         run: |
           BASE_DIR="scr/main/apiproxies"
           echo "PR Title: $PR_TITLE"
+
           RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
+          if [ -z "$RAW" ]; then
+            echo "❌ No proxies found in PR title, skipping promote.txt creation."
+            exit 0
+          fi
+
+          # Convert comma-separated to space-separated list
           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
+          echo "Parsed proxies: $PROXIES"
+
+          # Optional: you can re-check that folders exist if you want extra safety
+          MISSING=0
+          for proxy in $PROXIES; do
+            FOUND=0
+            for dir in "$BASE_DIR"/*; do
+              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
+              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
+                FOUND=1
+                break
+              fi
+            done
+            if [ "$FOUND" -eq 0 ]; then
+              echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
+              MISSING=1
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "❌ Some proxies are missing, promote.txt will not be updated."
+            exit 1
+          fi
+
+          # Save original comma-separated list to promote.txt
           echo "$RAW" > promote.txt
           echo "✅ promote.txt created with: $RAW"
 
-      - name: Commit and Push to Branch
+      - name: Commit and Push promote.txt
         run: |
           if [[ -n $(git status --porcelain promote.txt) ]]; then
             git config --global user.name "github-actions[bot]"
@@ -122,4 +212,4 @@ jobs:
           else
             echo "No changes to promote.txt, skipping push."
 
-#sample change
+#test 222 diff
