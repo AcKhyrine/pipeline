@@ -1,73 +1,113 @@
-name: Generate and Save Promote File
+# name: Generate and Save Promote File
+
+# on:
+#   pull_request:
+#     types: [opened, synchronize, reopened, edited]
+
+# jobs:
+#   create_and_push_file:
+#     runs-on: ubuntu-latest
+
+#     permissions:
+#       contents: write
+
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
+#         with:
+#           # Checkout the actual PR branch
+#           ref: ${{ github.event.pull_request.head.ref }}
+
+#       - name: Extract Proxies, Validate, and Create File
+#         env:
+#           PR_TITLE: ${{ github.event.pull_request.title }}
+#         run: |
+#           BASE_DIR="scr/main/apiproxies"  # Correct folder path
+
+#           echo "PR Title: $PR_TITLE"
+
+#           # Extract proxies after "Promote Proxies:"
+#           RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
+
+#           if [ -z "$RAW" ]; then
+#             echo "❌ No proxies found in PR title."
+#             echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
+#             exit 1
+#           fi
+
+#           # Convert comma-separated list to space-separated and trim
+#           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
+#           echo "Parsed proxies: $PROXIES"
+
+#           MISSING=0
+
+#           # Case-insensitive validation
+#           for proxy in $PROXIES; do
+#             FOUND=0
+#             for dir in "$BASE_DIR"/*; do
+#               DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+#               PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
+#               if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
+#                 FOUND=1
+#                 break
+#               fi
+#             done
+
+#             if [ "$FOUND" -eq 0 ]; then
+#               echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
+#               MISSING=1
+#             else
+#               echo "✅ Found proxy: $proxy"
+#             fi
+#           done
+
+#           if [ "$MISSING" -eq 1 ]; then
+#             echo "❌ One or more proxies do not exist. Failing workflow."
+#             echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
+#             exit 1
+#           fi
+
+#           # Save original comma-separated list to promote.txt
+#           echo "$RAW" > promote.txt
+#           echo "✅ promote.txt created with: $RAW"
+
+#       - name: Commit and Push to Branch
+#         run: |
+#           if [[ -n $(git status --porcelain promote.txt) ]]; then
+#             git config --global user.name "github-actions[bot]"
+#             git config --global user.email "github-actions[bot]@users.noreply.github.com"
+#             git add promote.txt
+#             git commit -m "chore: update promote.txt from PR title"
+#             git push
+#           else
+#             echo "No changes to promote.txt, skipping push."
+#           fi
+
+name: Generate and Save Promote File After Merge
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited]
+    types: [closed]
 
 jobs:
-  create_and_push_file:
+  create_promote_file:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # Checkout the actual PR branch
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: ${{ github.event.pull_request.base.ref }}
 
-      - name: Extract Proxies, Validate, and Create File
+      - name: Extract Proxies and Create promote.txt
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          BASE_DIR="scr/main/apiproxies"  # Correct folder path
-
+          BASE_DIR="scr/main/apiproxies"
           echo "PR Title: $PR_TITLE"
-
-          # Extract proxies after "Promote Proxies:"
           RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
-
-          if [ -z "$RAW" ]; then
-            echo "❌ No proxies found in PR title."
-            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
-            exit 1
-          fi
-
-          # Convert comma-separated list to space-separated and trim
           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
-          echo "Parsed proxies: $PROXIES"
-
-          MISSING=0
-
-          # Case-insensitive validation
-          for proxy in $PROXIES; do
-            FOUND=0
-            for dir in "$BASE_DIR"/*; do
-              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
-              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
-                FOUND=1
-                break
-              fi
-            done
-
-            if [ "$FOUND" -eq 0 ]; then
-              echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
-              MISSING=1
-            else
-              echo "✅ Found proxy: $proxy"
-            fi
-          done
-
-          if [ "$MISSING" -eq 1 ]; then
-            echo "❌ One or more proxies do not exist. Failing workflow."
-            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
-            exit 1
-          fi
-
-          # Save original comma-separated list to promote.txt
           echo "$RAW" > promote.txt
           echo "✅ promote.txt created with: $RAW"
 
@@ -81,4 +121,3 @@ jobs:
             git push
           else
             echo "No changes to promote.txt, skipping push."
-          fi
