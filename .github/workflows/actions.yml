@@ -15,13 +15,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
+          # Checkout the actual PR branch
           ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Extract Proxies, Validate, and Create File
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          BASE_DIR="."  # Root of the repo
+          BASE_DIR="scr/main/apiproxies"  # Correct folder path
 
           echo "PR Title: $PR_TITLE"
 
@@ -33,13 +34,13 @@ jobs:
             exit 1
           fi
 
-          # Convert comma-separated list to space-separated
+          # Convert comma-separated list to space-separated and trim
           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
           echo "Parsed proxies: $PROXIES"
 
           MISSING=0
 
-          # Loop through each proxy and check if folder exists (case-insensitive)
+          # Case-insensitive validation
           for proxy in $PROXIES; do
             FOUND=0
             for dir in "$BASE_DIR"/*; do
