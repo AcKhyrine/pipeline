@@ -92,9 +92,14 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, edited, closed]
 
+# Required to allow the bot to push promote.txt back to the repository
+permissions:
+  contents: write
+
 jobs:
   validate_proxies:
-    if: github.event.pull_request.merged != true  # run only on open PRs
+    # Run only on open PRs (when NOT merged and NOT closed)
+    if: github.event.pull_request.merged != true && github.event.action != 'closed'
     runs-on: ubuntu-latest
     name: Validate Proxies
     steps:
@@ -108,29 +113,29 @@ jobs:
           BASE_DIR="scr/main/apiproxies"
           echo "PR Title: $PR_TITLE"
 
-          # Extract proxies from PR title
           RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
           if [ -z "$RAW" ]; then
             echo "❌ No proxies found in PR title."
-            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
             exit 1
           fi
 
-          # Split comma-separated proxies
           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
           MISSING=0
 
-          # Case-insensitive validation
           for proxy in $PROXIES; do
             FOUND=0
-            for dir in "$BASE_DIR"/*; do
-              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
-              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
-                FOUND=1
-                break
-              fi
-            done
+            # Use find to handle potential case sensitivity or path issues
+            if [ -d "$BASE_DIR" ]; then
+                for dir in "$BASE_DIR"/*; do
+                DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+                PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
+                if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
+                    FOUND=1
+                    break
+                fi
+                done
+            fi
+            
             if [ "$FOUND" -eq 0 ]; then
               echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
               MISSING=1
@@ -140,76 +145,50 @@ jobs:
           done
 
           if [ "$MISSING" -eq 1 ]; then
-            echo "❌ One or more proxies do not exist. PR cannot be merged."
-            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
             exit 1
           fi
 
-          echo "✅ All proxies exist."
-
   create_promote_file:
-    if: github.event.pull_request.merged == true  # run only after PR merge
+    # Run only when the PR is closed AND it was merged
+    if: github.event.pull_request.merged == true && github.event.action == 'closed'
     runs-on: ubuntu-latest
     name: Create/Update promote.txt After Merge
     steps:
       - name: Checkout target branch
         uses: actions/checkout@v4
         with:
+          # Checkout the branch the PR was merged into (e.g., main)
           ref: ${{ github.event.pull_request.base.ref }}
+          fetch-depth: 0
 
       - name: Extract Proxies and Create promote.txt
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           BASE_DIR="scr/main/apiproxies"
-          echo "PR Title: $PR_TITLE"
-
           RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
+          
           if [ -z "$RAW" ]; then
-            echo "❌ No proxies found in PR title, skipping promote.txt creation."
+            echo "❌ No proxies found in PR title, skipping."
             exit 0
           fi
 
-          # Convert comma-separated to space-separated list
-          PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
-          echo "Parsed proxies: $PROXIES"
-
-          # Optional: you can re-check that folders exist if you want extra safety
-          MISSING=0
-          for proxy in $PROXIES; do
-            FOUND=0
-            for dir in "$BASE_DIR"/*; do
-              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
-              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
-              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
-                FOUND=1
-                break
-              fi
-            done
-            if [ "$FOUND" -eq 0 ]; then
-              echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
-              MISSING=1
-            fi
-          done
-
-          if [ "$MISSING" -eq 1 ]; then
-            echo "❌ Some proxies are missing, promote.txt will not be updated."
-            exit 1
-          fi
-
-          # Save original comma-separated list to promote.txt
-          echo "$RAW" > promote.txt
-          echo "✅ promote.txt created with: $RAW"
+          # Save cleaned comma-separated list to promote.txt
+          echo "$RAW" | xargs > promote.txt
+          echo "✅ promote.txt updated with: $(cat promote.txt)"
 
       - name: Commit and Push promote.txt
         run: |
-          if [[ -n $(git status --porcelain promote.txt) ]]; then
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add promote.txt
-            git commit -m "chore: update promote.txt from PR title"
-            git push
-          else
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git add promote.txt
+          
+          # Check if there are changes before committing
+          if git diff --staged --quiet; then
             echo "No changes to promote.txt, skipping push."
-
-#test 222 diff
+          else
+            # [skip ci] prevents this commit from triggering another workflow run
+            git commit -m "chore: update promote.txt from PR title [skip ci]"
+            git push origin ${{ github.event.pull_request.base.ref }}
+          fi
