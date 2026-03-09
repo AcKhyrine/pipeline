@@ -31,6 +31,7 @@ jobs:
 
           if [ -z "$RAW" ]; then
             echo "❌ No proxies found in PR title."
+            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
             exit 1
           fi
 
