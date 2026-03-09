@@ -85,6 +85,9 @@
 
 name: Promote Proxies Workflow
 
+# Workflow triggers:
+# 1️⃣ Validate proxies on PR creation/edit
+# 2️⃣ Create/update promote.txt after PR merge
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, closed]
