@@ -7,91 +7,79 @@ on:
 jobs:
   selective-promotion:
     runs-on: ubuntu-latest
-    # Grant permissions to push changes
     permissions:
       contents: write
 
     steps:
-    # 1. Checkout repo
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
         fetch-depth: 0 
 
-    # 2. Set environment variables
     - name: Set env variables
       run: |
         echo "SOURCE_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
         echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
 
-    # 3. Parse proxies from PR description
-    - name: Parse proxies from PR description
+    - name: Parse and Clean Proxies
+      id: parse
       run: |
         BODY="${{ github.event.pull_request.body }}"
-        # Extract lines after 'promote:' and clean up
-        PROXIES=$(echo "$BODY" | sed -n '/promote:/,$p' | sed 's/promote://g' | tr ',' ' ' | xargs)
         
+        # 1. Extract lines after 'promote:'
+        # 2. Remove 'promote:' text
+        # 3. Remove carriage returns (\r) - IMPORTANT
+        # 4. Replace commas/newlines with spaces
+        # 5. Trim leading/trailing whitespace
+        PROXIES=$(echo "$BODY" | sed -n '/promote:/,$p' | sed 's/promote://g' | tr -d '\r' | tr ',\n' ' ' | xargs)
+
         echo "PROXIES=$PROXIES"
         echo "PROXIES=$PROXIES" >> $GITHUB_ENV
 
-    # 4. Exit if no proxies specified
     - name: Exit if no proxies
       if: env.PROXIES == ''
       run: |
-        echo "No proxies specified in PR description. Exiting."
+        echo "No proxies specified. Exiting."
         exit 0
 
-    # 5. Configure Git
     - name: Configure Git
       run: |
         git config user.name "github-actions"
         git config user.email "github-actions@users.noreply.github.com"
 
-    # 6. Fetch source and target branches to ensure they are available
     - name: Fetch branches
       run: |
-        git fetch origin ${{ github.head_ref }}:${{ github.head_ref }}
-        git fetch origin ${{ github.event.pull_request.base.ref }}:${{ github.event.pull_request.base.ref }}
+        git fetch origin $SOURCE_BRANCH:$SOURCE_BRANCH
+        git fetch origin $TARGET_BRANCH:$TARGET_BRANCH
 
-    # 7. Create promotion branch from target branch
     - name: Create promotion branch
       run: |
         PROMO_BRANCH="promotion/${SOURCE_BRANCH}-${TARGET_BRANCH}"
         echo "PROMO_BRANCH=$PROMO_BRANCH" >> $GITHUB_ENV
-        # Start fresh from the target branch (e.g. main/prod)
         git checkout -B $PROMO_BRANCH origin/$TARGET_BRANCH
 
-    # 8. Copy selected proxies directly from the source branch reference
     - name: Copy selected proxies
       run: |
-        mkdir -p src/main/apiproxies
+        mkdir -p src/main/apiproxies/
         for proxy in $PROXIES; do
-          echo "Copying proxy: $proxy from origin/$SOURCE_BRANCH"
-          # We pull the specific folder from the origin's version of the source branch
-          git checkout origin/$SOURCE_BRANCH -- src/main/apiproxies/$proxy || echo "::warning::Proxy $proxy not found in source branch"
+          # Remove any potential hidden whitespace again just to be safe
+          CLEAN_PROXY=$(echo $proxy | xargs)
+          PATH_TO_PROXY="src/main/apiproxies/$CLEAN_PROXY"
+          
+          echo "Checking for: $PATH_TO_PROXY in origin/$SOURCE_BRANCH"
+          
+          # Use origin reference to ensure we see the remote files
+          git checkout origin/$SOURCE_BRANCH -- "$PATH_TO_PROXY" || echo "::warning::Proxy $CLEAN_PROXY not found"
         done
 
-    # 9. Commit and Push changes
     - name: Commit and Push
       run: |
-        # Check if anything was actually copied/changed
         git add src/main/apiproxies/
-        
         if ! git diff --cached --quiet; then
-          git commit -m "Promote proxies: $PROXIES from $SOURCE_BRANCH"
-          # Push using the environment variable
+          git commit -m "Promote proxies: $PROXIES"
           git push origin $PROMO_BRANCH --force
         else
-          echo "No changes detected (proxies might already be identical). Skipping push."
+          echo "No changes to commit."
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # 10. Summary
-    - name: Job Summary
-      run: |
-        echo "### Promotion Results" >> $GITHUB_STEP_SUMMARY
-        echo "Source: \`$SOURCE_BRANCH\`" >> $GITHUB_STEP_SUMMARY
-        echo "Target: \`$TARGET_BRANCH\`" >> $GITHUB_STEP_SUMMARY
-        echo "Proxies processed: \`$PROXIES\`" >> $GITHUB_STEP_SUMMARY
-        echo "Promotion branch created: \`$PROMO_BRANCH\`" >> $GITHUB_STEP_SUMMARY
