@@ -22,54 +22,42 @@ jobs:
         echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
 
     - name: Parse and Clean Proxies
-      id: parse
       run: |
         BODY="${{ github.event.pull_request.body }}"
-        
-        # 1. Extract lines after 'promote:'
-        # 2. Remove 'promote:' text
-        # 3. Remove carriage returns (\r) - IMPORTANT
-        # 4. Replace commas/newlines with spaces
-        # 5. Trim leading/trailing whitespace
-        PROXIES=$(echo "$BODY" | sed -n '/promote:/,$p' | sed 's/promote://g' | tr -d '\r' | tr ',\n' ' ' | xargs)
-
-        echo "PROXIES=$PROXIES"
+        # Extract proxies, remove \r, remove commas, trim whitespace
+        PROXIES=$(echo "$BODY" | sed -n '/promote:/,$p' | sed 's/promote://g' | tr -d '\r' | tr ',' ' ' | xargs)
         echo "PROXIES=$PROXIES" >> $GITHUB_ENV
 
     - name: Exit if no proxies
       if: env.PROXIES == ''
-      run: |
-        echo "No proxies specified. Exiting."
-        exit 0
+      run: exit 0
 
     - name: Configure Git
       run: |
         git config user.name "github-actions"
         git config user.email "github-actions@users.noreply.github.com"
 
-    - name: Fetch branches
-      run: |
-        git fetch origin $SOURCE_BRANCH:$SOURCE_BRANCH
-        git fetch origin $TARGET_BRANCH:$TARGET_BRANCH
-
     - name: Create promotion branch
       run: |
         PROMO_BRANCH="promotion/${SOURCE_BRANCH}-${TARGET_BRANCH}"
         echo "PROMO_BRANCH=$PROMO_BRANCH" >> $GITHUB_ENV
+        git fetch origin $TARGET_BRANCH
         git checkout -B $PROMO_BRANCH origin/$TARGET_BRANCH
 
-    - name: Copy selected proxies
+    - name: Copy selected proxies via Archive
       run: |
+        # Ensure we have the latest from source
+        git fetch origin $SOURCE_BRANCH
+        
         mkdir -p src/main/apiproxies/
+        
         for proxy in $PROXIES; do
-          # Remove any potential hidden whitespace again just to be safe
           CLEAN_PROXY=$(echo $proxy | xargs)
-          PATH_TO_PROXY="src/main/apiproxies/$CLEAN_PROXY"
+          echo "Processing: $CLEAN_PROXY"
           
-          echo "Checking for: $PATH_TO_PROXY in origin/$SOURCE_BRANCH"
-          
-          # Use origin reference to ensure we see the remote files
-          git checkout origin/$SOURCE_BRANCH -- "$PATH_TO_PROXY" || echo "::warning::Proxy $CLEAN_PROXY not found"
+          # This pulls the folder directly from the remote branch as a tarball and extracts it
+          # This bypasses the 'pathspec' index error entirely
+          git archive --format=tar origin/$SOURCE_BRANCH "src/main/apiproxies/$CLEAN_PROXY" | tar -xf - || echo "::warning::Proxy $CLEAN_PROXY not found in $SOURCE_BRANCH"
         done
 
     - name: Commit and Push
@@ -79,7 +67,7 @@ jobs:
           git commit -m "Promote proxies: $PROXIES"
           git push origin $PROMO_BRANCH --force
         else
-          echo "No changes to commit."
+          echo "No changes detected. Ensure the proxy folder exists in $SOURCE_BRANCH and the path is correct."
         fi
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
