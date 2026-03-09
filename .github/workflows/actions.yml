@@ -121,5 +121,3 @@ jobs:
             git push
           else
             echo "No changes to promote.txt, skipping push."
-
-# sample change
