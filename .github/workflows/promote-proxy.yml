@@ -1,0 +1,69 @@
+name: Promote Proxies
+
+on:
+  pull_request:
+    types: [opened, edited]
+
+jobs:
+  selective-promotion:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0  # needed for full history
+
+    - name: Set variables
+      run: |
+        echo "SOURCE_BRANCH=${{ github.head_ref }}" >> $GITHUB_ENV
+        # extract target branch from PR base
+        echo "TARGET_BRANCH=${{ github.event.pull_request.base.ref }}" >> $GITHUB_ENV
+
+    - name: Parse proxies from PR description
+      id: parse
+      run: |
+        echo "PR_DESC<<EOF" >> $GITHUB_ENV
+        echo "${{ github.event.pull_request.body }}" >> $GITHUB_ENV
+        echo "EOF" >> $GITHUB_ENV
+
+        # parse lines like "promote: proxy2" or "promote:\n- proxy2"
+        PROXIES=$(echo "${{ github.event.pull_request.body }}" | grep -Eo "proxy[0-9]+" || echo "")
+        echo "PROXIES=$PROXIES"
+        echo "PROXIES=$PROXIES" >> $GITHUB_ENV
+
+    - name: Exit if no proxies found
+      if: env.PROXIES == ''
+      run: |
+        echo "No proxies specified in PR description. Exiting."
+        exit 0
+
+    - name: Configure Git
+      run: |
+        git config user.name "github-actions"
+        git config user.email "github-actions@users.noreply.github.com"
+
+    - name: Create promotion branch
+      run: |
+        PROMO_BRANCH="promotion/${SOURCE_BRANCH}-${TARGET_BRANCH}"
+        echo "Promotion branch: $PROMO_BRANCH"
+        git fetch origin $TARGET_BRANCH
+        git checkout -B $PROMO_BRANCH origin/$TARGET_BRANCH
+
+    - name: Copy selected proxies
+      run: |
+        for proxy in $PROXIES; do
+          echo "Copying $proxy from $SOURCE_BRANCH"
+          git checkout $SOURCE_BRANCH -- src/main/apiproxies/$proxy || echo "Proxy $proxy not found"
+        done
+
+    - name: Commit promotion changes
+      run: |
+        git add src/main/apiproxies/*
+        git commit -m "Promote proxies: $PROXIES from $SOURCE_BRANCH → $TARGET_BRANCH" || echo "No changes to commit"
+
+    - name: Push promotion branch
+      uses: ad-m/github-push-action@v0.6.0
+      with:
+        branch: promotion/${{ env.SOURCE_BRANCH }}-${{ env.TARGET_BRANCH }}
+        github_token: ${{ secrets.GITHUB_TOKEN }}
