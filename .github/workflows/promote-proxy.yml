@@ -10,15 +10,15 @@ jobs:
 
     steps:
     # ----------------------------------------
-    # 1. Checkout repository
+    # 1. Checkout repo
     # ----------------------------------------
     - name: Checkout repository
       uses: actions/checkout@v3
       with:
-        fetch-depth: 0  # Needed to fetch all branches
+        fetch-depth: 0  # fetch all history and branches
 
     # ----------------------------------------
-    # 2. Set environment variables
+    # 2. Set basic environment variables
     # ----------------------------------------
     - name: Set env variables
       run: |
@@ -34,9 +34,8 @@ jobs:
     - name: Parse proxies from PR description
       id: parse
       run: |
-        # Extract lines after 'promote:'
-        PROXIES=$(echo "${{ github.event.pull_request.body }}" | \
-          sed -n '/promote:/,$p' | tail -n +2 | grep -oE '[a-zA-Z0-9_-]+' | tr '\n' ' ')
+        # Extract lines after 'promote:' (multi-line support)
+        PROXIES=$(echo "${{ github.event.pull_request.body }}" | sed -n '/promote:/,$p' | tail -n +2 | grep -oE '[a-zA-Z0-9_-]+' | tr '\n' ' ')
 
         # Fallback: single-line 'promote: proxy-name'
         if [ -z "$PROXIES" ]; then
@@ -67,13 +66,13 @@ jobs:
         git config user.email "github-actions@users.noreply.github.com"
 
     # ----------------------------------------
-    # 6. Fetch source branch explicitly
+    # 6. Fetch source branch (SIT/PR branch)
     # ----------------------------------------
     - name: Fetch source branch
       run: git fetch origin $SOURCE_BRANCH:$SOURCE_BRANCH
 
     # ----------------------------------------
-    # 7. Create temporary promotion branch from target
+    # 7. Create promotion branch from target branch
     # ----------------------------------------
     - name: Create promotion branch
       run: |
@@ -89,7 +88,15 @@ jobs:
       run: |
         for proxy in $PROXIES; do
           echo "Copying proxy: $proxy from $SOURCE_BRANCH"
-          git checkout $SOURCE_BRANCH -- src/main/apiproxies/$proxy || echo "Proxy $proxy not found"
+
+          # Fetch the proxy folder from the source branch into a temp directory
+          mkdir -p /tmp/source_branch
+          git --work-tree=/tmp/source_branch checkout $SOURCE_BRANCH -- src/main/apiproxies/$proxy || echo "Proxy $proxy not found in source branch"
+
+          # Copy into promotion branch
+          if [ -d "/tmp/source_branch/src/main/apiproxies/$proxy" ]; then
+            cp -r /tmp/source_branch/src/main/apiproxies/$proxy src/main/apiproxies/
+          fi
         done
 
     # ----------------------------------------
