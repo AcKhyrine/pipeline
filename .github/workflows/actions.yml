@@ -21,7 +21,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          BASE_DIR="src/main/apiproxies"
+          BASE_DIR="."  # Root of the repo
 
           echo "PR Title: $PR_TITLE"
 
@@ -35,13 +35,23 @@ jobs:
 
           # Convert comma-separated list to space-separated
           PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
-
           echo "Parsed proxies: $PROXIES"
 
           MISSING=0
 
+          # Loop through each proxy and check if folder exists (case-insensitive)
           for proxy in $PROXIES; do
-            if [ ! -d "$BASE_DIR/$proxy" ]; then
+            FOUND=0
+            for dir in "$BASE_DIR"/*; do
+              DIR_NAME=$(basename "$dir" | tr '[:upper:]' '[:lower:]')
+              PROXY_LOWER=$(echo "$proxy" | tr '[:upper:]' '[:lower:]')
+              if [ "$DIR_NAME" = "$PROXY_LOWER" ]; then
+                FOUND=1
+                break
+              fi
+            done
+
+            if [ "$FOUND" -eq 0 ]; then
               echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
               MISSING=1
             else
@@ -54,7 +64,7 @@ jobs:
             exit 1
           fi
 
-          # Save original comma-separated list
+          # Save original comma-separated list to promote.txt
           echo "$RAW" > promote.txt
           echo "✅ promote.txt created with: $RAW"
 
@@ -68,4 +78,3 @@ jobs:
             git push
           else
             echo "No changes to promote.txt, skipping push."
-          fi
