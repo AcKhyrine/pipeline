@@ -1,0 +1,71 @@
+name: Generate and Save Promote File
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  create_and_push_file:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Extract Proxies, Validate, and Create File
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          BASE_DIR="src/main/apiproxies"
+
+          echo "PR Title: $PR_TITLE"
+
+          # Extract proxies after "Promote Proxies:"
+          RAW=$(echo "$PR_TITLE" | sed -n 's/.*[Pp]romote [Pp]roxies:[[:space:]]*//p')
+
+          if [ -z "$RAW" ]; then
+            echo "❌ No proxies found in PR title."
+            exit 1
+          fi
+
+          # Convert comma-separated list to space-separated
+          PROXIES=$(echo "$RAW" | tr ',' ' ' | xargs)
+
+          echo "Parsed proxies: $PROXIES"
+
+          MISSING=0
+
+          for proxy in $PROXIES; do
+            if [ ! -d "$BASE_DIR/$proxy" ]; then
+              echo "❌ Proxy '$proxy' does NOT exist in $BASE_DIR"
+              MISSING=1
+            else
+              echo "✅ Found proxy: $proxy"
+            fi
+          done
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "❌ One or more proxies do not exist. Failing workflow."
+            exit 1
+          fi
+
+          # Save original comma-separated list
+          echo "$RAW" > promote.txt
+          echo "✅ promote.txt created with: $RAW"
+
+      - name: Commit and Push to Branch
+        run: |
+          if [[ -n $(git status --porcelain promote.txt) ]]; then
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add promote.txt
+            git commit -m "chore: update promote.txt from PR title"
+            git push
+          else
+            echo "No changes to promote.txt, skipping push."
+          fi
