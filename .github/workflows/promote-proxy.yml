@@ -37,7 +37,7 @@ jobs:
         git fetch origin $SOURCE_BRANCH
         git checkout $SOURCE_BRANCH
         echo "Proxies in $SOURCE_BRANCH:"
-        ls -1 src/main/apiproxies/ || echo "No proxies found!"
+        ls -1 $GITHUB_WORKSPACE/src/main/apiproxies/ || echo "No proxies found!"
 
     # ----------------------------------------
     # 4. Parse proxies from PR description
@@ -84,17 +84,21 @@ jobs:
     # ----------------------------------------
     - name: Copy selected proxies
       run: |
+        REPO_ROOT=$GITHUB_WORKSPACE
+
         for proxy in $PROXIES; do
           echo "Copying proxy: $proxy from $SOURCE_BRANCH"
 
+          # Remove old temp folder
           rm -rf /tmp/source_branch
           mkdir -p /tmp/source_branch
 
-          # Authenticated clone of source branch
+          # Clone source branch into temp folder
           git clone --single-branch --branch $SOURCE_BRANCH https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} /tmp/source_branch
 
+          # Check if proxy exists
           if [ -d "/tmp/source_branch/src/main/apiproxies/$proxy" ]; then
-            cp -r /tmp/source_branch/src/main/apiproxies/$proxy src/main/apiproxies/
+            cp -r "/tmp/source_branch/src/main/apiproxies/$proxy" "$REPO_ROOT/src/main/apiproxies/"
             echo "✅ Copied $proxy successfully"
           else
             echo "❌ Proxy $proxy not found in $SOURCE_BRANCH"
