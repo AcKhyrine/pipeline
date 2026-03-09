@@ -62,6 +62,7 @@ jobs:
 
           if [ "$MISSING" -eq 1 ]; then
             echo "❌ One or more proxies do not exist. Failing workflow."
+            echo "[PR Title Here] Promote Proxies: proxyName1, proxyName2, etc. (list all proxy folders you want to promote)"
             exit 1
           fi
 
