@@ -1,58 +1,50 @@
-name: "Path-Based Proxy Promotion"
+name: "Surgical Code Move (Cherry-Pick Style)"
 
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - uat
-      - main
+  workflow_dispatch:
+    inputs:
+      proxy_name:
+        description: 'Name of the proxy folder to move'
+        required: true
+      target_branch:
+        description: 'Branch to move code to (uat or main)'
+        required: true
+        default: 'uat'
 
 jobs:
-  promote:
-    if: github.event.pull_request.merged == true
+  move-code:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Target Branch (UAT/PROD)
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0 # Important: fetch all history to compare changes
+          ref: ${{ github.event.inputs.target_branch }}
+          fetch-depth: 0
 
-      - name: Get Changed Proxies
-        id: changed-proxies
-        uses: tj-actions/changed-files@v44
-        with:
-          # This looks specifically for changes in your proxy folders
-          dir_names: true
-          dir_names_max_depth: 4
-          files: src/main/apiproxies/**
-
-      - name: Determine Environments
+      - name: Configure Git
         run: |
-          if [ "${{ github.base_ref }}" == "uat" ]; then
-            echo "SRC=sit" >> $GITHUB_ENV
-            echo "DEST=uat" >> $GITHUB_ENV
+          git config user.name "Robot-Promoter"
+          git config user.email "actions@github.com"
+
+      - name: "Surgically Sync Proxy Code"
+        run: |
+          PROXY="${{ github.event.inputs.proxy_name }}"
+          
+          # This is the "magic" command. 
+          # It reaches into the 'sit' branch and grabs ONLY that folder.
+          git checkout origin/sit -- src/main/apiproxies/$PROXY
+          
+          git add .
+          
+          # Only commit if there are actually changes
+          if git diff-index --quiet HEAD; then
+            echo "No changes to move for $PROXY"
           else
-            echo "SRC=uat" >> $GITHUB_ENV
-            echo "DEST=prod" >> $GITHUB_ENV
+            git commit -m "Surgical promotion of $PROXY from SIT"
+            git push origin ${{ github.event.inputs.target_branch }}
           fi
 
-      - name: Promote Detected Proxies
-        if: steps.changed-proxies.outputs.any_changed == 'true'
+      - name: "Run Deployment Logic"
         run: |
-          # The Action returns a space-separated list of changed folders
-          # e.g. "src/main/apiproxies/test-proxy-1 src/main/apiproxies/test-proxy-2"
-          
-          for FOLDER in ${{ steps.changed-proxies.outputs.all_changed_files }}; do
-            # Extract just the proxy name from the path
-            PROXY_NAME=$(basename $FOLDER)
-            
-            echo "------------------------------------------"
-            echo "Detected change in: $PROXY_NAME"
-            echo "🛠 Promoting $PROXY_NAME from $SRC to $DEST"
-            
-            # YOUR LOGIC HERE:
-            # 1. Get highest revision of $PROXY_NAME in $SRC
-            # 2. Deploy that revision to $DEST
-            
-            echo "✅ $PROXY_NAME Promotion Complete!"
-          done
+          echo "Now that the code is merged, I can trigger the API promotion..."
+          # Your CLI command to deploy the highest revision
