@@ -45,7 +45,7 @@ jobs:
      - name: Validate proxy exists in sit
        run: |
          echo "Checking proxy in sit..."
-         if git ls-tree -r origin/sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
+         if git ls-tree -r sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
            echo "::notice::Proxy exists in sit"
          else
            echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
@@ -54,7 +54,7 @@ jobs:
      - name: Copy proxy from sit
        run: |
          echo "Copying proxy ${PROMOTE_PROXY} from sit..."
-         git checkout origin/sit -- src/main/apiproxies/${PROMOTE_PROXY}
+         git checkout sit -- src/main/apiproxies/${PROMOTE_PROXY}
      - name: Commit promotion preparation
        run: |
          git config user.name "github-actions"
