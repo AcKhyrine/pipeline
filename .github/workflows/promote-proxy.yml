@@ -1,7 +1,6 @@
 name: Prepare Proxy Promotion (SIT → UAT)
 on:
  pull_request:
-   types: [opened, edited, synchronize]
    branches:
      - UAT
 jobs:
