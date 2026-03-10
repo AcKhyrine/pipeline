@@ -93,7 +93,7 @@
 name: Prepare Proxy Promotion (sit → UAT)
 on:
   pull_request:
-    types: [opened, synchronize, reopened, edited, closed]
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: write
