@@ -42,15 +42,17 @@ jobs:
      - name: Fetch sit branch
        run: |
          git fetch origin sit
+         git checkout -b sit FETCH_HEAD
      - name: Validate proxy exists in sit
        run: |
-         echo "Checking proxy in sit..."
-         if git ls-tree -r sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
-           echo "::notice::Proxy exists in sit"
-         else
-           echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
-           exit 1
-         fi
+          echo "Checking proxy in sit..."
+          git ls-tree -r sit --name-only
+          if git ls-tree -r sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
+            echo "::notice::Proxy exists in sit"
+          else
+            echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
+            exit 1
+          fi
      - name: Copy proxy from sit
        run: |
          echo "Copying proxy ${PROMOTE_PROXY} from sit..."
