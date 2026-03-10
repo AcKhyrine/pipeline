@@ -42,19 +42,27 @@ jobs:
         run: |
           echo "PROMOTE_PROXY=${{ steps.extract.outputs.proxy }}" >> $GITHUB_ENV
 
-      - name: Fetch sit branch
+      - name: Fetch and checkout sit branch safely
         run: |
+          echo "Fetching latest sit branch..."
           git fetch origin sit
-          git checkout sit
-          git reset --hard origin/sit
+          git checkout -B sit origin/sit  # Safe: creates or resets local sit branch to remote
+          echo "Current branch: $(git branch --show-current)"
+          echo "Latest commit: $(git rev-parse HEAD)"
 
       - name: Validate proxy exists in sit
         run: |
           echo "Checking proxy in sit..."
-          echo "Listing all proxies in sit:"
-          git ls-tree -r sit --name-only | grep "src/main/apiproxies/" || true
+          echo "Listing all proxies in src/main/apiproxies/:"
+          if [ -d "src/main/apiproxies" ]; then
+            ls -1 src/main/apiproxies
+          else
+            echo "No proxies folder found in sit!"
+          fi
           if git ls-tree -r sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
             echo "::notice::Proxy exists in sit"
+          elif [ -d "src/main/apiproxies/${PROMOTE_PROXY}" ]; then
+            echo "::notice::Proxy exists in sit (detected via folder check)"
           else
             echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
             exit 1
