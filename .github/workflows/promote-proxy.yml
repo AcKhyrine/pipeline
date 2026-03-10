@@ -90,7 +90,7 @@
 #           echo "Reviewer can now inspect the changes in this PR."
 
 
-name: Prepare Proxy Promotion (SIT → UAT)
+name: Prepare Proxy Promotion (sit → UAT)
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, closed]
@@ -99,7 +99,7 @@ permissions:
   contents: write
 jobs:
  promote:
-   if: github.event.pull_request.base.ref == 'UAT' && github.event.pull_request.head.ref == 'SIT'
+   if: github.event.pull_request.base.ref == 'UAT' && github.event.pull_request.head.ref == 'sit'
    runs-on: ubuntu-latest
    steps:
      - name: Start Workflow
@@ -129,22 +129,22 @@ jobs:
      - name: Set environment variable
        run: |
          echo "PROMOTE_PROXY=${{ steps.extract.outputs.proxy }}" >> $GITHUB_ENV
-     - name: Fetch SIT branch
+     - name: Fetch sit branch
        run: |
-         git fetch origin SIT
-     - name: Validate proxy exists in SIT
+         git fetch origin sit
+     - name: Validate proxy exists in sit
        run: |
-         echo "Checking proxy in SIT..."
-         if git ls-tree -r origin/SIT --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
-           echo "::notice::Proxy exists in SIT"
+         echo "Checking proxy in sit..."
+         if git ls-tree -r origin/sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
+           echo "::notice::Proxy exists in sit"
          else
-           echo "::error::Proxy ${PROMOTE_PROXY} not found in SIT"
+           echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
            exit 1
          fi
-     - name: Copy proxy from SIT
+     - name: Copy proxy from sit
        run: |
-         echo "Copying proxy ${PROMOTE_PROXY} from SIT..."
-         git checkout origin/SIT -- src/main/apiproxies/${PROMOTE_PROXY}
+         echo "Copying proxy ${PROMOTE_PROXY} from sit..."
+         git checkout origin/sit -- src/main/apiproxies/${PROMOTE_PROXY}
      - name: Commit promotion preparation
        run: |
          git config user.name "github-actions"
@@ -154,7 +154,7 @@ jobs:
            echo "::warning::No changes detected"
            exit 0
          fi
-         git commit -m "Prepare promotion of ${PROMOTE_PROXY} from SIT to UAT"
+         git commit -m "Prepare promotion of ${PROMOTE_PROXY} from sit to UAT"
      - name: Push changes to PR branch
        run: |
          git push origin HEAD:${{ github.event.pull_request.head.ref }}
