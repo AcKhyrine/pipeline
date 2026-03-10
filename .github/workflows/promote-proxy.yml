@@ -92,10 +92,11 @@
 
 name: Prepare Proxy Promotion (SIT → UAT)
 on:
- pull_request:
-   types: [opened, edited, synchronize]
-   branches:
-     - UAT
+  pull_request:
+    types: [opened, synchronize, reopened, edited, closed]
+
+permissions:
+  contents: write
 jobs:
  promote:
    if: github.event.pull_request.base.ref == 'UAT' && github.event.pull_request.head.ref == 'SIT'
