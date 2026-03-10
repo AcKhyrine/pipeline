@@ -1,76 +1,86 @@
 name: Prepare Proxy Promotion (sit → uat)
 on:
- pull_request:
+  pull_request:
     types: [opened, synchronize, reopened, edited, closed]
-    
-# Required to allow the bot to push promote.txt back to the repository
+
 permissions:
   contents: write
 
 jobs:
- promote:
-   if: github.event.pull_request.base.ref == 'uat' && github.event.pull_request.head.ref == 'sit'
-   runs-on: ubuntu-latest
-   steps:
-     - name: Start Workflow
-       run: |
-         echo "===== Promotion Preparation Started ====="
-         echo "PR Number: ${{ github.event.pull_request.number }}"
-         echo "Source Branch: ${{ github.event.pull_request.head.ref }}"
-         echo "Target Branch: ${{ github.event.pull_request.base.ref }}"
-     - name: Checkout PR branch
-       uses: actions/checkout@v4
-       with:
-         ref: ${{ github.event.pull_request.head.ref }}
-         fetch-depth: 0
-     - name: Extract proxy name from PR description
-       id: extract
-       run: |
-         BODY="${{ github.event.pull_request.body }}"
-         echo "PR Description:"
-         echo "$BODY"
-         PROXY=$(echo "$BODY" | grep -oP 'promote:\K[^\s]+')
-         if [ -z "$PROXY" ]; then
-           echo "::error::PR description must contain promote:<proxy-name>"
-           exit 1
-         fi
-         echo "::notice::Proxy requested: $PROXY"
-         echo "proxy=$PROXY" >> $GITHUB_OUTPUT
-     - name: Set environment variable
-       run: |
-         echo "PROMOTE_PROXY=${{ steps.extract.outputs.proxy }}" >> $GITHUB_ENV
-     - name: Fetch sit branch
-       run: |
-         git fetch origin sit
-         git checkout -b sit FETCH_HEAD
-     - name: Validate proxy exists in sit
-       run: |
+  promote:
+    if: github.event.pull_request.base.ref == 'uat' && github.event.pull_request.head.ref == 'sit'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start Workflow
+        run: |
+          echo "===== Promotion Preparation Started ====="
+          echo "PR Number: ${{ github.event.pull_request.number }}"
+          echo "Source Branch: ${{ github.event.pull_request.head.ref }}"
+          echo "Target Branch: ${{ github.event.pull_request.base.ref }}"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Extract proxy name from PR description
+        id: extract
+        run: |
+          BODY="${{ github.event.pull_request.body }}"
+          echo "PR Description:"
+          echo "$BODY"
+          PROXY=$(echo "$BODY" | grep -oP 'promote:\K[^\s]+')
+          if [ -z "$PROXY" ]; then
+            echo "::error::PR description must contain promote:<proxy-name>"
+            exit 1
+          fi
+          echo "::notice::Proxy requested: $PROXY"
+          echo "proxy=$PROXY" >> $GITHUB_OUTPUT
+
+      - name: Set environment variable
+        run: |
+          echo "PROMOTE_PROXY=${{ steps.extract.outputs.proxy }}" >> $GITHUB_ENV
+
+      - name: Fetch sit branch
+        run: |
+          git fetch origin sit
+          git checkout sit
+          git reset --hard origin/sit
+
+      - name: Validate proxy exists in sit
+        run: |
           echo "Checking proxy in sit..."
-          git ls-tree -r sit --name-only
+          echo "Listing all proxies in sit:"
+          git ls-tree -r sit --name-only | grep "src/main/apiproxies/" || true
           if git ls-tree -r sit --name-only | grep -q "src/main/apiproxies/${PROMOTE_PROXY}"; then
             echo "::notice::Proxy exists in sit"
           else
             echo "::error::Proxy ${PROMOTE_PROXY} not found in sit"
             exit 1
           fi
-     - name: Copy proxy from sit
-       run: |
-         echo "Copying proxy ${PROMOTE_PROXY} from sit..."
-         git checkout sit -- src/main/apiproxies/${PROMOTE_PROXY}
-     - name: Commit promotion preparation
-       run: |
-         git config user.name "github-actions"
-         git config user.email "github-actions@github.com"
-         git add src/main/apiproxies/${PROMOTE_PROXY}
-         if git diff --cached --quiet; then
-           echo "::warning::No changes detected"
-           exit 0
-         fi
-         git commit -m "Prepare promotion of ${PROMOTE_PROXY} from sit to uat"
-     - name: Push changes to PR branch
-       run: |
-         git push origin HEAD:${{ github.event.pull_request.head.ref }}
-     - name: Finish Workflow
-       run: |
-         echo "::notice::Promotion preparation completed."
-         echo "Reviewer can now inspect the changes in this PR."
+
+      - name: Copy proxy from sit
+        run: |
+          echo "Copying proxy ${PROMOTE_PROXY} from sit..."
+          git checkout sit -- src/main/apiproxies/${PROMOTE_PROXY}
+
+      - name: Commit promotion preparation
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add src/main/apiproxies/${PROMOTE_PROXY}
+          if git diff --cached --quiet; then
+            echo "::warning::No changes detected"
+            exit 0
+          fi
+          git commit -m "Prepare promotion of ${PROMOTE_PROXY} from sit to uat"
+
+      - name: Push changes to PR branch
+        run: |
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
+      - name: Finish Workflow
+        run: |
+          echo "::notice::Promotion preparation completed."
+          echo "Reviewer can now inspect the changes in this PR."
