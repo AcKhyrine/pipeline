@@ -1,8 +1,12 @@
 name: Prepare Proxy Promotion (SIT → UAT)
 on:
  pull_request:
-   branches:
-     - UAT
+    types: [opened, synchronize, reopened, edited, closed]
+    
+# Required to allow the bot to push promote.txt back to the repository
+permissions:
+  contents: write
+
 jobs:
  promote:
    if: github.event.pull_request.base.ref == 'UAT' && github.event.pull_request.head.ref == 'SIT'
